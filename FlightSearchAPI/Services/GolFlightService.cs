@@ -1,89 +1,49 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net.Http;
+﻿using System.Net.Http;
 using System.Text.Json;
-using System.Threading.Tasks;
 using FlightSearchAPI.Models;
 using FlightSearchAPI.Services.Interfaces;
 using Microsoft.Extensions.Logging;
 
-public class GolFlightService : IFlightService
+namespace FlightSearchAPI.Services
 {
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<GolFlightService> _logger;
-
-    public GolFlightService(HttpClient httpClient, ILogger<GolFlightService> logger)
+    public class GolFlightService : IFlightService
     {
-        _httpClient = httpClient;
-        _logger = logger;
-    }
+        private readonly HttpClient _httpClient;
+        private readonly ILogger<GolFlightService> _logger;
+        private readonly FlightMappingService _flightMappingService;
 
-    public async Task<IEnumerable<Flight>> GetFlightsAsync(string origin, string destination, DateTime date)
-    {
-        var response = await _httpClient.GetStringAsync($"https://dev.reserve.com.br/airapi/gol/getavailability?origin={origin}&destination={destination}&date={date:yyyy-MM-dd}");
-
-        _logger.LogInformation("GOL API response: {Response}", response);
-
-        List<GolFlight> golFlights;
-        try
+        public GolFlightService(HttpClient httpClient, ILogger<GolFlightService> logger, FlightMappingService flightMappingService)
         {
-            golFlights = JsonSerializer.Deserialize<List<GolFlight>>(response);
-        }
-        catch (JsonException ex)
-        {
-            _logger.LogError(ex, "Error deserializing GOL API response.");
-            return new List<Flight>();
+            _httpClient = httpClient;
+            _logger = logger;
+            _flightMappingService = flightMappingService;
         }
 
-        if (golFlights == null)
+        public async Task<IEnumerable<Flight>> GetFlightsAsync(string origin, string destination, DateTime date)
         {
-            _logger.LogError("Deserialized GOL flights list is null.");
-            return new List<Flight>();
+            var response = await GetApiResponseAsync(origin, destination, date);
+            var golFlights = DeserializeResponse(response);
+            return _flightMappingService.MapToFlights(golFlights);
         }
 
-        var flights = new List<Flight>();
-        foreach (var golFlight in golFlights)
+        private async Task<string> GetApiResponseAsync(string origin, string destination, DateTime date)
         {
+            var url = $"https://dev.reserve.com.br/airapi/gol/getavailability?origin={origin}&destination={destination}&date={date:yyyy-MM-dd}";
+            return await _httpClient.GetStringAsync(url);
+        }
+
+        private List<FlightDto> DeserializeResponse(string response)
+        {
+            _logger.LogInformation("GOL API response: {Response}", response);
             try
             {
-                flights.Add(MapToFlight(golFlight));
+                return JsonSerializer.Deserialize<List<FlightDto>>(response) ?? new List<FlightDto>();
             }
-            catch (Exception ex)
+            catch (JsonException ex)
             {
-                _logger.LogError(ex, "Error mapping flight: {Flight}", golFlight);
+                _logger.LogError(ex, "Error deserializing GOL API response.");
+                return new List<FlightDto>();
             }
         }
-
-        return flights;
     }
-
-    private Flight MapToFlight(GolFlight golFlight)
-    {
-        if (string.IsNullOrEmpty(golFlight.DepartureDate) || string.IsNullOrEmpty(golFlight.ArrivalDate))
-        {
-            throw new ArgumentException("Invalid flight data.");
-        }
-
-        return new Flight
-        {
-            FlightNumber = golFlight.FlightNumber,
-            Airline = golFlight.Carrier,
-            Origin = golFlight.OriginAirport,
-            Destination = golFlight.DestinationAirport,
-            DepartureTime = DateTime.Parse(golFlight.DepartureDate),
-            ArrivalTime = DateTime.Parse(golFlight.ArrivalDate),
-            Fare = golFlight.FarePrice
-        };
-    }
-}
-
-public class GolFlight
-{
-    public string FlightNumber { get; set; }
-    public string Carrier { get; set; }
-    public string DepartureDate { get; set; }
-    public string ArrivalDate { get; set; }
-    public string OriginAirport { get; set; }
-    public string DestinationAirport { get; set; }
-    public decimal FarePrice { get; set; }
 }

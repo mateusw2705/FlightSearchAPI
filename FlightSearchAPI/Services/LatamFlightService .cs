@@ -1,89 +1,49 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Net.Http;
+﻿using System.Net.Http;
 using System.Text.Json;
-using System.Threading.Tasks;
 using FlightSearchAPI.Models;
 using FlightSearchAPI.Services.Interfaces;
 using Microsoft.Extensions.Logging;
 
-public class LatamFlightService : IFlightService
+namespace FlightSearchAPI.Services
 {
-    private readonly HttpClient _httpClient;
-    private readonly ILogger<LatamFlightService> _logger;
-
-    public LatamFlightService(HttpClient httpClient, ILogger<LatamFlightService> logger)
+    public class LatamFlightService : IFlightService
     {
-        _httpClient = httpClient;
-        _logger = logger;
-    }
+        private readonly HttpClient _httpClient;
+        private readonly ILogger<LatamFlightService> _logger;
+        private readonly FlightMappingService _flightMappingService;
 
-    public async Task<IEnumerable<Flight>> GetFlightsAsync(string origin, string destination, DateTime date)
-    {
-        var response = await _httpClient.GetStringAsync($"https://dev.reserve.com.br/airapi/latam/flights?departureCity={origin}&arrivalCity={destination}&departureDate={date:yyyy-MM-dd}");
-
-        _logger.LogInformation("LATAM API response: {Response}", response);
-
-        List<LatamFlight> latamFlights;
-        try
+        public LatamFlightService(HttpClient httpClient, ILogger<LatamFlightService> logger, FlightMappingService flightMappingService)
         {
-            latamFlights = JsonSerializer.Deserialize<List<LatamFlight>>(response);
-        }
-        catch (JsonException ex)
-        {
-            _logger.LogError(ex, "Error deserializing LATAM API response.");
-            return new List<Flight>();
+            _httpClient = httpClient;
+            _logger = logger;
+            _flightMappingService = flightMappingService;
         }
 
-        if (latamFlights == null)
+        public async Task<IEnumerable<Flight>> GetFlightsAsync(string origin, string destination, DateTime date)
         {
-            _logger.LogError("Deserialized LATAM flights list is null.");
-            return new List<Flight>();
+            var response = await GetApiResponseAsync(origin, destination, date);
+            var latamFlights = DeserializeResponse(response);
+            return _flightMappingService.MapToFlights(latamFlights);
         }
 
-        var flights = new List<Flight>();
-        foreach (var latamFlight in latamFlights)
+        private async Task<string> GetApiResponseAsync(string origin, string destination, DateTime date)
         {
+            var url = $"https://dev.reserve.com.br/airapi/latam/flights?departureCity={origin}&arrivalCity={destination}&departureDate={date:yyyy-MM-dd}";
+            return await _httpClient.GetStringAsync(url);
+        }
+
+        private List<FlightDto> DeserializeResponse(string response)
+        {
+            _logger.LogInformation("LATAM API response: {Response}", response);
             try
             {
-                flights.Add(MapToFlight(latamFlight));
+                return JsonSerializer.Deserialize<List<FlightDto>>(response) ?? new List<FlightDto>();
             }
-            catch (Exception ex)
+            catch (JsonException ex)
             {
-                _logger.LogError(ex, "Error mapping flight: {Flight}", latamFlight);
+                _logger.LogError(ex, "Error deserializing LATAM API response.");
+                return new List<FlightDto>();
             }
         }
-
-        return flights;
     }
-
-    private Flight MapToFlight(LatamFlight latamFlight)
-    {
-        if (string.IsNullOrEmpty(latamFlight.DepartureDate) || string.IsNullOrEmpty(latamFlight.ArrivalDate))
-        {
-            throw new ArgumentException("Invalid flight data.");
-        }
-
-        return new Flight
-        {
-            FlightNumber = latamFlight.FlightNumber,
-            Airline = latamFlight.Carrier,
-            Origin = latamFlight.OriginAirport,
-            Destination = latamFlight.DestinationAirport,
-            DepartureTime = DateTime.Parse(latamFlight.DepartureDate),
-            ArrivalTime = DateTime.Parse(latamFlight.ArrivalDate),
-            Fare = latamFlight.FarePrice
-        };
-    }
-}
-
-public class LatamFlight
-{
-    public string FlightNumber { get; set; }
-    public string Carrier { get; set; }
-    public string DepartureDate { get; set; }
-    public string ArrivalDate { get; set; }
-    public string OriginAirport { get; set; }
-    public string DestinationAirport { get; set; }
-    public decimal FarePrice { get; set; }
 }
