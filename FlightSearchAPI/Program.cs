@@ -1,30 +1,26 @@
+using FlightSearchAPI.Services;
 using FlightSearchAPI.Services.Interfaces;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
+builder.Services.AddHttpClient();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Register the HTTP clients for GOL and LATAM services
-builder.Services.AddHttpClient<GolFlightService>();
-builder.Services.AddHttpClient<LatamFlightService>();
-
-// Register flight services explicitly
-builder.Services.AddTransient<GolFlightService>();
-builder.Services.AddTransient<LatamFlightService>();
-
-// Register FlightAggregatorService with specific implementation
-builder.Services.AddTransient<IFlightService>(serviceProvider =>
+// Register services
+builder.Services.AddSingleton<FlightMappingService>();
+builder.Services.AddSingleton<GolFlightService>();
+builder.Services.AddSingleton<LatamFlightService>();
+builder.Services.AddSingleton<IFlightService, FlightAggregatorService>(provider =>
 {
-    var golService = serviceProvider.GetRequiredService<GolFlightService>();
-    var latamService = serviceProvider.GetRequiredService<LatamFlightService>();
+    var golService = provider.GetRequiredService<GolFlightService>();
+    var latamService = provider.GetRequiredService<LatamFlightService>();
     return new FlightAggregatorService(new IFlightService[] { golService, latamService });
 });
-
-// Register logging services
-builder.Services.AddLogging();
 
 var app = builder.Build();
 
@@ -36,9 +32,6 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
 app.UseAuthorization();
-
 app.MapControllers();
-
 app.Run();
