@@ -24,11 +24,20 @@ public class GolFlightService : IFlightService
 
         _logger.LogInformation("GOL API response: {Response}", response);
 
-        var golFlights = JsonSerializer.Deserialize<List<GolFlight>>(response);
+        List<GolFlight> golFlights;
+        try
+        {
+            golFlights = JsonSerializer.Deserialize<List<GolFlight>>(response);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "Error deserializing GOL API response.");
+            return new List<Flight>();
+        }
 
         if (golFlights == null)
         {
-            _logger.LogError("Failed to deserialize GOL flights.");
+            _logger.LogError("Deserialized GOL flights list is null.");
             return new List<Flight>();
         }
 
@@ -50,7 +59,7 @@ public class GolFlightService : IFlightService
 
     private Flight MapToFlight(GolFlight golFlight)
     {
-        if (string.IsNullOrEmpty(golFlight.DepartureTime) || string.IsNullOrEmpty(golFlight.ArrivalTime))
+        if (string.IsNullOrEmpty(golFlight.DepartureDate) || string.IsNullOrEmpty(golFlight.ArrivalDate))
         {
             throw new ArgumentException("Invalid flight data.");
         }
@@ -58,12 +67,12 @@ public class GolFlightService : IFlightService
         return new Flight
         {
             FlightNumber = golFlight.FlightNumber,
-            Airline = "GOL",
-            Origin = golFlight.Origin,
-            Destination = golFlight.Destination,
-            DepartureTime = DateTime.Parse(golFlight.DepartureTime),
-            ArrivalTime = DateTime.Parse(golFlight.ArrivalTime),
-            Fare = golFlight.Fare
+            Airline = golFlight.Carrier,
+            Origin = golFlight.OriginAirport,
+            Destination = golFlight.DestinationAirport,
+            DepartureTime = DateTime.Parse(golFlight.DepartureDate),
+            ArrivalTime = DateTime.Parse(golFlight.ArrivalDate),
+            Fare = golFlight.FarePrice
         };
     }
 }
@@ -71,9 +80,10 @@ public class GolFlightService : IFlightService
 public class GolFlight
 {
     public string FlightNumber { get; set; }
-    public string Origin { get; set; }
-    public string Destination { get; set; }
-    public string DepartureTime { get; set; }
-    public string ArrivalTime { get; set; }
-    public decimal Fare { get; set; }
+    public string Carrier { get; set; }
+    public string DepartureDate { get; set; }
+    public string ArrivalDate { get; set; }
+    public string OriginAirport { get; set; }
+    public string DestinationAirport { get; set; }
+    public decimal FarePrice { get; set; }
 }

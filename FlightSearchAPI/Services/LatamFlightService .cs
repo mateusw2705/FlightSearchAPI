@@ -24,11 +24,20 @@ public class LatamFlightService : IFlightService
 
         _logger.LogInformation("LATAM API response: {Response}", response);
 
-        var latamFlights = JsonSerializer.Deserialize<List<LatamFlight>>(response);
+        List<LatamFlight> latamFlights;
+        try
+        {
+            latamFlights = JsonSerializer.Deserialize<List<LatamFlight>>(response);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogError(ex, "Error deserializing LATAM API response.");
+            return new List<Flight>();
+        }
 
         if (latamFlights == null)
         {
-            _logger.LogError("Failed to deserialize LATAM flights.");
+            _logger.LogError("Deserialized LATAM flights list is null.");
             return new List<Flight>();
         }
 
@@ -50,7 +59,7 @@ public class LatamFlightService : IFlightService
 
     private Flight MapToFlight(LatamFlight latamFlight)
     {
-        if (string.IsNullOrEmpty(latamFlight.DepartureTime) || string.IsNullOrEmpty(latamFlight.ArrivalTime))
+        if (string.IsNullOrEmpty(latamFlight.DepartureDate) || string.IsNullOrEmpty(latamFlight.ArrivalDate))
         {
             throw new ArgumentException("Invalid flight data.");
         }
@@ -58,12 +67,12 @@ public class LatamFlightService : IFlightService
         return new Flight
         {
             FlightNumber = latamFlight.FlightNumber,
-            Airline = "LATAM",
-            Origin = latamFlight.Origin,
-            Destination = latamFlight.Destination,
-            DepartureTime = DateTime.Parse(latamFlight.DepartureTime),
-            ArrivalTime = DateTime.Parse(latamFlight.ArrivalTime),
-            Fare = latamFlight.Fare
+            Airline = latamFlight.Carrier,
+            Origin = latamFlight.OriginAirport,
+            Destination = latamFlight.DestinationAirport,
+            DepartureTime = DateTime.Parse(latamFlight.DepartureDate),
+            ArrivalTime = DateTime.Parse(latamFlight.ArrivalDate),
+            Fare = latamFlight.FarePrice
         };
     }
 }
@@ -71,9 +80,10 @@ public class LatamFlightService : IFlightService
 public class LatamFlight
 {
     public string FlightNumber { get; set; }
-    public string Origin { get; set; }
-    public string Destination { get; set; }
-    public string DepartureTime { get; set; }
-    public string ArrivalTime { get; set; }
-    public decimal Fare { get; set; }
+    public string Carrier { get; set; }
+    public string DepartureDate { get; set; }
+    public string ArrivalDate { get; set; }
+    public string OriginAirport { get; set; }
+    public string DestinationAirport { get; set; }
+    public decimal FarePrice { get; set; }
 }
